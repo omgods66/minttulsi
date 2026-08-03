@@ -67,6 +67,67 @@ export class ExistingOrderConflictError extends Error {
 
 const sheetContextCache = new Map<string, Promise<SheetContext>>();
 
+const SHEET_COLORS = {
+  forest: { red: 0.055, green: 0.22, blue: 0.145 },
+  forestLight: { red: 0.89, green: 0.95, blue: 0.91 },
+  ivory: { red: 1, green: 0.99, blue: 0.955 },
+  gold: { red: 0.83, green: 0.64, blue: 0.25 },
+  white: { red: 1, green: 1, blue: 1 },
+  amber: { red: 1, green: 0.94, blue: 0.74 },
+  amberText: { red: 0.55, green: 0.3, blue: 0.02 },
+  blue: { red: 0.86, green: 0.92, blue: 1 },
+  blueText: { red: 0.08, green: 0.25, blue: 0.55 },
+  violet: { red: 0.92, green: 0.88, blue: 1 },
+  violetText: { red: 0.32, green: 0.16, blue: 0.58 },
+  green: { red: 0.82, green: 0.94, blue: 0.85 },
+  greenText: { red: 0.08, green: 0.38, blue: 0.16 },
+  red: { red: 1, green: 0.86, blue: 0.86 },
+  redText: { red: 0.62, green: 0.08, blue: 0.08 },
+} as const;
+
+const COLUMN_WIDTHS = [
+  { startIndex: 0, endIndex: 2, pixelSize: 170 },
+  { startIndex: 2, endIndex: 3, pixelSize: 180 },
+  { startIndex: 3, endIndex: 4, pixelSize: 135 },
+  { startIndex: 4, endIndex: 5, pixelSize: 220 },
+  { startIndex: 5, endIndex: 6, pixelSize: 280 },
+  { startIndex: 6, endIndex: 7, pixelSize: 165 },
+  { startIndex: 7, endIndex: 10, pixelSize: 120 },
+  { startIndex: 10, endIndex: 12, pixelSize: 155 },
+  { startIndex: 12, endIndex: 13, pixelSize: 220 },
+  { startIndex: 13, endIndex: 16, pixelSize: 115 },
+  { startIndex: 16, endIndex: 17, pixelSize: 175 },
+  { startIndex: 17, endIndex: 20, pixelSize: 150 },
+] as const;
+
+const STATUS_FORMATS = [
+  {
+    status: "New Order",
+    background: SHEET_COLORS.amber,
+    foreground: SHEET_COLORS.amberText,
+  },
+  {
+    status: "Order Confirmed",
+    background: SHEET_COLORS.blue,
+    foreground: SHEET_COLORS.blueText,
+  },
+  {
+    status: "Order Ongoing",
+    background: SHEET_COLORS.violet,
+    foreground: SHEET_COLORS.violetText,
+  },
+  {
+    status: "Delivered",
+    background: SHEET_COLORS.green,
+    foreground: SHEET_COLORS.greenText,
+  },
+  {
+    status: "Cancelled",
+    background: SHEET_COLORS.red,
+    foreground: SHEET_COLORS.redText,
+  },
+] as const;
+
 function quoteSheetName(tabName: string): string {
   return `'${tabName.replaceAll("'", "''")}'`;
 }
@@ -94,100 +155,246 @@ async function initialiseSheet(
     requestBody: { values: [[...SHEET_HEADERS]] },
   });
 
-  await context.sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [
-        {
-          repeatCell: {
-            range: {
-              sheetId: context.sheetId,
-              startRowIndex: 0,
-              endRowIndex: 1,
-              startColumnIndex: 0,
-              endColumnIndex: SHEET_HEADERS.length,
-            },
-            cell: {
-              userEnteredFormat: {
-                backgroundColor: { red: 0.09, green: 0.25, blue: 0.17 },
-                textFormat: {
-                  foregroundColor: { red: 1, green: 1, blue: 1 },
-                  bold: true,
-                },
-                horizontalAlignment: "CENTER",
-                verticalAlignment: "MIDDLE",
-                wrapStrategy: "WRAP",
-              },
-            },
-            fields: "userEnteredFormat",
-          },
+  const requests: sheets_v4.Schema$Request[] = [
+    {
+      updateSpreadsheetProperties: {
+        properties: { timeZone: "Asia/Kathmandu" },
+        fields: "timeZone",
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: SHEET_HEADERS.length,
         },
-        {
-          updateDimensionProperties: {
-            range: {
-              sheetId: context.sheetId,
-              dimension: "ROWS",
-              startIndex: 0,
-              endIndex: 1,
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: SHEET_COLORS.forest,
+            textFormat: {
+              foregroundColor: SHEET_COLORS.white,
+              bold: true,
+              fontSize: 11,
             },
-            properties: { pixelSize: 42 },
-            fields: "pixelSize",
-          },
-        },
-        {
-          updateSheetProperties: {
-            properties: {
-              sheetId: context.sheetId,
-              gridProperties: { frozenRowCount: 1 },
-            },
-            fields: "gridProperties.frozenRowCount",
-          },
-        },
-        {
-          setBasicFilter: {
-            filter: {
-              range: {
-                sheetId: context.sheetId,
-                startRowIndex: 0,
-                endRowIndex: context.rowCount,
-                startColumnIndex: 0,
-                endColumnIndex: SHEET_HEADERS.length,
+            horizontalAlignment: "CENTER",
+            verticalAlignment: "MIDDLE",
+            wrapStrategy: "WRAP",
+            borders: {
+              bottom: {
+                style: "SOLID_THICK",
+                color: SHEET_COLORS.gold,
               },
             },
           },
         },
-        {
-          setDataValidation: {
-            range: {
+        fields: "userEnteredFormat",
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: {
+          sheetId: context.sheetId,
+          dimension: "ROWS",
+          startIndex: 0,
+          endIndex: 1,
+        },
+        properties: { pixelSize: 44 },
+        fields: "pixelSize",
+      },
+    },
+    {
+      updateSheetProperties: {
+        properties: {
+          sheetId: context.sheetId,
+          gridProperties: { frozenRowCount: 1 },
+          tabColor: SHEET_COLORS.forest,
+        },
+        fields: "gridProperties.frozenRowCount,tabColor",
+      },
+    },
+    {
+      setBasicFilter: {
+        filter: {
+          range: {
+            sheetId: context.sheetId,
+            startRowIndex: 0,
+            endRowIndex: context.rowCount,
+            startColumnIndex: 0,
+            endColumnIndex: SHEET_HEADERS.length,
+          },
+        },
+      },
+    },
+    {
+      setDataValidation: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: 11,
+          endColumnIndex: 12,
+        },
+        rule: {
+          condition: {
+            type: "ONE_OF_LIST",
+            values: ORDER_STATUS_OPTIONS.map((status) => ({
+              userEnteredValue: status,
+            })),
+          },
+          strict: true,
+          showCustomUi: true,
+        },
+      },
+    },
+    {
+      addBanding: {
+        bandedRange: {
+          range: {
+            sheetId: context.sheetId,
+            startRowIndex: 0,
+            endRowIndex: context.rowCount,
+            startColumnIndex: 0,
+            endColumnIndex: SHEET_HEADERS.length,
+          },
+          rowProperties: {
+            headerColor: SHEET_COLORS.forest,
+            firstBandColor: SHEET_COLORS.ivory,
+            secondBandColor: SHEET_COLORS.forestLight,
+          },
+        },
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: 0,
+          endColumnIndex: SHEET_HEADERS.length,
+        },
+        cell: {
+          userEnteredFormat: {
+            verticalAlignment: "MIDDLE",
+            wrapStrategy: "WRAP",
+          },
+        },
+        fields:
+          "userEnteredFormat.verticalAlignment,userEnteredFormat.wrapStrategy",
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: 7,
+          endColumnIndex: 12,
+        },
+        cell: { userEnteredFormat: { horizontalAlignment: "CENTER" } },
+        fields: "userEnteredFormat.horizontalAlignment",
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: 13,
+          endColumnIndex: 20,
+        },
+        cell: { userEnteredFormat: { horizontalAlignment: "CENTER" } },
+        fields: "userEnteredFormat.horizontalAlignment",
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: 8,
+          endColumnIndex: 10,
+        },
+        cell: {
+          userEnteredFormat: {
+            numberFormat: { type: "NUMBER", pattern: '"Rs" #,##0' },
+          },
+        },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    },
+    ...[15, 17].map<sheets_v4.Schema$Request>((columnIndex) => ({
+      repeatCell: {
+        range: {
+          sheetId: context.sheetId,
+          startRowIndex: 1,
+          endRowIndex: context.rowCount,
+          startColumnIndex: columnIndex,
+          endColumnIndex: columnIndex + 1,
+        },
+        cell: {
+          userEnteredFormat: {
+            numberFormat: { type: "NUMBER", pattern: '"Rs" #,##0' },
+          },
+        },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    })),
+    ...COLUMN_WIDTHS.map<sheets_v4.Schema$Request>((width) => ({
+      updateDimensionProperties: {
+        range: {
+          sheetId: context.sheetId,
+          dimension: "COLUMNS",
+          startIndex: width.startIndex,
+          endIndex: width.endIndex,
+        },
+        properties: { pixelSize: width.pixelSize },
+        fields: "pixelSize",
+      },
+    })),
+    ...STATUS_FORMATS.map<sheets_v4.Schema$Request>((statusFormat) => ({
+      addConditionalFormatRule: {
+        index: 0,
+        rule: {
+          ranges: [
+            {
               sheetId: context.sheetId,
               startRowIndex: 1,
               endRowIndex: context.rowCount,
               startColumnIndex: 11,
               endColumnIndex: 12,
             },
-            rule: {
-              condition: {
-                type: "ONE_OF_LIST",
-                values: ORDER_STATUS_OPTIONS.map((status) => ({
-                  userEnteredValue: status,
-                })),
+          ],
+          booleanRule: {
+            condition: {
+              type: "CUSTOM_FORMULA",
+              values: [
+                { userEnteredValue: `=$L2="${statusFormat.status}"` },
+              ],
+            },
+            format: {
+              backgroundColor: statusFormat.background,
+              textFormat: {
+                foregroundColor: statusFormat.foreground,
+                bold: true,
               },
-              strict: true,
-              showCustomUi: true,
             },
           },
         },
-        {
-          autoResizeDimensions: {
-            dimensions: {
-              sheetId: context.sheetId,
-              dimension: "COLUMNS",
-              startIndex: 0,
-              endIndex: SHEET_HEADERS.length,
-            },
-          },
-        },
-      ],
+      },
+    })),
+  ];
+
+  await context.sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests,
     },
   });
 }
@@ -333,7 +540,7 @@ export async function getOrCreateSheetOrder(
     spreadsheetId: environment.googleSheetId,
     range: `${context.quotedTabName}!A:T`,
     valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
+    insertDataOption: "OVERWRITE",
     requestBody: {
       values: [
         [
